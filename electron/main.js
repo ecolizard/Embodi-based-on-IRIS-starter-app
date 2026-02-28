@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, nativeTheme, shell } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const { registerIrisIpc } = require('./iris');
 const { MOCK_EXTRINSICS } = require('./mockExtrinsics');
 const path = require('path');
@@ -99,6 +100,32 @@ app.whenReady().then(() => {
 
     createWindow();
     startIrisMockProcess();
+
+    // Auto-update setup
+    autoUpdater.checkForUpdatesAndNotify();
+
+    autoUpdater.on('checking-for-update', () => {
+        console.log('[Updater] Checking for update...');
+    });
+    autoUpdater.on('update-available', (info) => {
+        console.log('[Updater] Update available:', info.version);
+    });
+    autoUpdater.on('update-not-available', (info) => {
+        console.log('[Updater] Update not available.');
+    });
+    autoUpdater.on('error', (err) => {
+        console.error('[Updater] Error in auto-updater:', err);
+    });
+    autoUpdater.on('download-progress', (progressObj) => {
+        let log_message = "Download speed: " + progressObj.bytesPerSecond;
+        log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
+        log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ")";
+        console.log('[Updater] ' + log_message);
+    });
+    autoUpdater.on('update-downloaded', (info) => {
+        console.log('[Updater] Update downloaded; will install now');
+        autoUpdater.quitAndInstall();
+    });
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();

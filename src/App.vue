@@ -395,6 +395,8 @@ let irisLastFpsTime = 0;
 
 // Skeleton always visible by default
 
+let browserMockTimer: ReturnType<typeof setInterval> | null = null;
+
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
@@ -812,6 +814,21 @@ onMounted(() => {
   window.ipc?.onIrisData((data) => {
     irisData = data
   })
+
+  // Browser fallback: when not in Electron, stream mock pose data directly
+  if (!(window as any).ipc) {
+    fetch('/assets/position 2.json')
+      .then(r => r.json())
+      .then((positions: IrisData[]) => {
+        if (!Array.isArray(positions) || positions.length === 0) return;
+        let frame = 0;
+        browserMockTimer = setInterval(() => {
+          irisData = positions[frame];
+          frame = (frame + 1) % positions.length;
+        }, 1000 / 30);
+      })
+      .catch(err => console.warn('[browser mock] could not load position 2.json', err));
+  }
 });
 
 onBeforeUnmount(() => {
@@ -819,6 +836,7 @@ onBeforeUnmount(() => {
   disposeCameras();
   disposeSceneCameras();
   disposePlaySpace();
+  if (browserMockTimer) { clearInterval(browserMockTimer); browserMockTimer = null; }
   if (frameId) cancelAnimationFrame(frameId);
   if (resizeObserver && sceneRef.value) resizeObserver.unobserve(sceneRef.value);
   if (renderer) { renderer.dispose(); renderer = null; }

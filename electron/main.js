@@ -15,9 +15,9 @@ function startIrisMockProcess() {
   );
   if (runtimeExists) return;
 
-  const positionsPath = path.join(__dirname, '..', 'public', 'assets', 'position 2.json');
+  const positionsPath = path.join(__dirname, '..', 'public', 'assets', 'mock-halpe26-stream.json');
   if (!fs.existsSync(positionsPath)) {
-    console.warn('[mock] position 2.json not found, skipping mock process');
+    console.warn('[mock] mock-halpe26-stream.json not found, skipping mock process');
     return;
   }
 
@@ -120,7 +120,65 @@ ipcMain.handle('open-external', async (event, url) => {
     }
 });
 
-// Serve the IRIS extrinsics calibration file.
+// ── Filesystem recordings ────────────────────────────────────────────────────
+
+// Return (and create if needed) the default recordings dir: Videos\IRIS
+ipcMain.handle('fs-get-default-recordings-dir', () => {
+    const videosDir = app.getPath('videos');
+    const irisDir = path.join(videosDir, 'IRIS');
+    try {
+        if (!fs.existsSync(irisDir)) {
+            fs.mkdirSync(irisDir, { recursive: true });
+            console.log('[recordings] created default recordings dir:', irisDir);
+        } else {
+            console.log('[recordings] using existing recordings dir:', irisDir);
+        }
+    } catch (err) {
+        console.error('[recordings] failed to create recordings dir:', err);
+    }
+    return irisDir;
+});
+ipcMain.handle('fs-pick-recordings-dir', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select Recordings Folder',
+        properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+});
+
+// List sub-folders (recordings) inside the chosen root dir
+ipcMain.handle('fs-list-recordings', async (event, rootDir) => {
+    if (!rootDir) return [];
+    try {
+        const entries = fs.readdirSync(rootDir, { withFileTypes: true });
+        return entries
+            .filter(e => e.isDirectory())
+            .map(e => ({ name: e.name, path: path.join(rootDir, e.name) }))
+            .sort((a, b) => b.name.localeCompare(a.name)); // newest first
+    } catch {
+        return [];
+    }
+});
+
+// Open a recording folder in the OS file explorer
+ipcMain.handle('fs-open-recording', async (event, folderPath) => {
+    await shell.openPath(folderPath);
+});
+
+// Rename a recording folder
+ipcMain.handle('fs-rename-recording', async (event, oldPath, newName) => {
+    try {
+        const parent = path.dirname(oldPath);
+        const newPath = path.join(parent, newName);
+        if (fs.existsSync(newPath)) return { ok: false, error: 'A recording with that name already exists.' };
+        fs.renameSync(oldPath, newPath);
+        return { ok: true, newPath };
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
 // - If the mock stream is active (no real runtime), return the mock extrinsics.
 // - If a real runtime exists, read the live extrinsics file.
 // - The frontend should clear mock camera gizmos when real cameras connect.

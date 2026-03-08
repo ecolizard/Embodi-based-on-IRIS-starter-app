@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain, nativeTheme, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, nativeTheme, shell, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const { registerIrisIpc } = require('./iris');
+const { registerIrisIpc, IRIS_CLI_EXE } = require('./iris');
 const { MOCK_EXTRINSICS } = require('./mockExtrinsics');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+
 
 let mainWindow;
 let mockTimer = null;
@@ -46,7 +47,8 @@ function createWindow() {
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
-            nodeIntegration: false
+            nodeIntegration: false,
+            webSecurity: false,
         }
     });
 
@@ -66,6 +68,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+
     registerIrisIpc();
 
     createWindow();
@@ -120,6 +123,13 @@ ipcMain.handle('open-external', async (event, url) => {
     }
 });
 
+// Check whether iris_cli.exe is present on disk
+ipcMain.handle('check-iris-cli', () => {
+    const found = fs.existsSync(IRIS_CLI_EXE);
+    console.log(`[iris-cli] check: ${found ? 'found' : 'NOT found'} at ${IRIS_CLI_EXE}`);
+    return { found, path: IRIS_CLI_EXE };
+});
+
 // ── Filesystem recordings ────────────────────────────────────────────────────
 
 // Return (and create if needed) the default recordings dir: Videos\IRIS
@@ -164,6 +174,42 @@ ipcMain.handle('fs-list-recordings', async (event, rootDir) => {
 // Open a recording folder in the OS file explorer
 ipcMain.handle('fs-open-recording', async (event, folderPath) => {
     await shell.openPath(folderPath);
+});
+
+// Read position.json + enumerate video files for a recording folder
+ipcMain.handle('fs-get-recording-data', async (event, recordingPath) => {
+    const posPath = path.join(recordingPath, 'position.json');
+    let positions = [];
+    try {
+        if (fs.existsSync(posPath)) {
+            const raw = fs.readFileSync(posPath, 'utf8');
+            positions = JSON.parse(raw);
+        }
+    } catch (err) {
+        console.error('[recording] failed to read position.json:', err);
+    }
+
+    let videoFiles = [];
+    try {
+        const entries = fs.readdirSync(recordingPath);
+        videoFiles = entries
+            .filter(f => /\.(webm|mp4|mkv|avi|mov)$/i.test(f))
+            .map((f, i) => ({
+                index: i,
+                name: f,
+                path: path.join(recordingPath, f),
+            }));
+    } catch (err) {
+        console.error('[recording] failed to list video files:', err);
+    }
+
+    return { positions, videoFiles };
+});
+
+// Return a file:// URL the renderer can load as a video src.
+// webSecurity is disabled so the renderer can access local files directly.
+ipcMain.handle('fs-get-video-url', async (event, filePath) => {
+    return 'file:///' + filePath.replace(/\\/g, '/');
 });
 
 // Rename a recording folder

@@ -12,41 +12,54 @@
         <div class="settings-section">
           <div class="settings-group">
             <label>License Management</label>
-            <div class="license-input-wrapper">
-              <input 
-                v-model="licenseKeyInput" 
-                type="text" 
-                placeholder="Enter License Key"
-                class="license-input"
-                :disabled="isChecking"
-                @keyup.enter="handleLicenseSubmit"
-              />
-              <button 
-                class="btn-activate" 
-                @click="handleLicenseSubmit"
-                :disabled="isChecking || !licenseKeyInput"
-              >
-                <span v-if="isChecking">Checking...</span>
-                <span v-else>{{ isValidLicense ? 'Update' : 'Activate' }}</span>
-              </button>
-            </div>
+            <Transition name="fade">
+              <div v-if="isValidLicense" class="license-active-row">
+                <div class="license-msg success">
+                  ✓ License active — <span class="plan-badge">{{ planType }}</span>
+                </div>
+                <button class="btn-remove" @click="licenseLogout" title="Remove license">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <div v-else class="license-input-wrapper">
+                <input
+                  v-model="licenseKeyInput"
+                  type="text"
+                  placeholder="Enter License Key"
+                  class="license-input"
+                  :disabled="isChecking"
+                  @keyup.enter="handleLicenseSubmit"
+                />
+                <button
+                  class="btn-activate"
+                  @click="handleLicenseSubmit"
+                  :disabled="isChecking || !licenseKeyInput"
+                >
+                  <span v-if="isChecking">Checking...</span>
+                  <span v-else>Activate</span>
+                </button>
+              </div>
+            </Transition>
             <Transition name="fade">
               <div v-if="licenseError" class="license-msg error">{{ licenseError }}</div>
-              <div v-else-if="isValidLicense" class="license-msg success">License active and valid</div>
             </Transition>
           </div>
-          
-          <div v-if="isValidLicense" class="settings-actions">
-            <button class="btn-deactivate" @click="licenseLogout">Deactivate License</button>
-          </div>
 
-          <!-- Upgrade Section -->
-          <div v-if="!isPaidLicense" class="settings-footer">
-            <div class="divider"><span>Support Us</span></div>
-            <button class="btn-buy" @click="buyLicense">
-              Get a License
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
-            </button>
+          <!-- Footer Section -->
+          <div class="settings-footer">
+            <div v-if="isDonateEligible" style="padding-top: 8px; display: flex; flex-direction: column; gap: 12px;">
+              <div class="divider"><span>Support Development</span></div>
+              <button class="btn-donate" @click="openUrl('https://www.paypal.com/donate/?hosted_button_id=WTNDSZMG4C6LG')">
+                ♥ Make a Donation
+              </button>
+            </div>
+            <div v-else>
+              <div class="divider"><span>{{ isValidLicense ? 'Upgrade' : 'Support Us' }}</span></div>
+              <button class="btn-buy" @click="buyLicense">
+                {{ isValidLicense ? 'Upgrade Plan' : 'Get a License' }}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -55,8 +68,8 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, watch, nextTick, computed } from 'vue';
-import { useLicense } from './../lib/useLicense';
+import { ref, computed } from 'vue';
+import { useLicense } from '../lib/useLicense';
 
 interface Props {
   showSettings: boolean,
@@ -72,8 +85,7 @@ const emit = defineEmits<{
 
 const licenseKeyInput = ref('');
 const { 
-  licenseKey: storedLicenseKey,
-  isValid: isValidLicense, 
+  isValid: isValidLicense,
   isChecking, 
   error: licenseError, 
   planType,
@@ -81,10 +93,11 @@ const {
   logout: licenseLogout 
 } = useLicense();
 
-const isPaidLicense = computed(() => {
+
+const isDonateEligible = computed(() => {
   if (!isValidLicense.value) return false;
   const plan = planType.value?.toLowerCase();
-  return plan === 'creator' || plan === 'studio';
+  return plan === 'kickstarter-lifetime' || plan === 'studio';
 });
 
 async function handleLicenseSubmit() {
@@ -92,24 +105,22 @@ async function handleLicenseSubmit() {
   emit('licenseKey', licenseKeyInput.value)
 }
 
-async function buyLicense() {
-  const url = import.meta.env.VITE_LICENSE_URL || 'https://embodi.ecolizard.com/#pricing';
-  console.log('Buy License clicked - opening:', url);
-  
+async function openUrl(url: string) {
   if (!(window as any).electronAPI?.openExternal) {
     console.error('CRITICAL: electronAPI.openExternal is missing! Please restart the application.');
     return;
   }
-
   try {
     const result = await (window as any).electronAPI.openExternal(url);
-    console.log('Open External Result:', result);
-    if (result && !result.ok) {
-      console.error('System failed to open URL:', result.error);
-    }
+    if (result && !result.ok) console.error('System failed to open URL:', result.error);
   } catch (err) {
     console.error('IPC invocation failed:', err);
   }
+}
+
+async function buyLicense() {
+  const url = import.meta.env.VITE_LICENSE_URL || 'https://embodi.ecolizard.com/#pricing';
+  await openUrl(url);
 }
 
 function settings() {
@@ -170,6 +181,29 @@ function settings() {
 
 .license-input-wrapper { display: flex; gap: 12px; }
 
+.license-active-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(107, 230, 117, 0.05);
+  border: 1px solid rgba(107, 230, 117, 0.15);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.btn-remove {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s;
+}
+
+.btn-remove:hover { color: #ff3b30; }
+
 .license-input {
   flex: 1;
   background: rgba(0, 0, 0, 0.2);
@@ -203,18 +237,6 @@ function settings() {
 
 .btn-activate:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.btn-deactivate {
-  background: transparent;
-  border: 1px solid rgba(255, 59, 48, 0.3);
-  color: #ff3b30;
-  border-radius: 10px;
-  padding: 10px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-deactivate:hover { background: rgba(255, 59, 48, 0.1); border-color: #ff3b30; }
 
 .btn-buy {
   background: rgba(107, 230, 117, 0.1);
@@ -225,6 +247,7 @@ function settings() {
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -238,9 +261,46 @@ function settings() {
   transform: translateY(-1px);
 }
 
+.btn-donate {
+  background: rgba(255, 160, 50, 0.1);
+  border: 1px solid rgba(255, 160, 50, 0.25);
+  color: #ffa032;
+  border-radius: 12px;
+  padding: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  transition: all 0.2s ease;
+}
+
+.btn-donate:hover {
+  background: rgba(255, 160, 50, 0.18);
+  border-color: #ffa032;
+  transform: translateY(-1px);
+}
+
 .license-msg { font-size: 13px; margin-top: 4px; }
 .license-msg.error { color: #ff9a5c; }
 .license-msg.success { color: #6be675; }
+
+.plan-badge {
+  display: inline-block;
+  background: rgba(107, 230, 117, 0.15);
+  border: 1px solid rgba(107, 230, 117, 0.35);
+  color: #6be675;
+  border-radius: 6px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+}
 
 .license-badge-container.clickable:hover .upgrade-action {
   transform: translateX(2px);

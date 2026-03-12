@@ -53,7 +53,7 @@
                 ♥ Make a Donation
               </button>
             </div>
-            <div v-else>
+            <div v-else style="padding-top: 8px; display: flex; flex-direction: column; gap: 12px;">
               <div class="divider"><span>{{ isValidLicense ? 'Upgrade' : 'Support Us' }}</span></div>
               <button class="btn-buy" @click="buyLicense">
                 {{ isValidLicense ? 'Upgrade Plan' : 'Get a License' }}
